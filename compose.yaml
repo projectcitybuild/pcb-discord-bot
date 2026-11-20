@@ -1,0 +1,38 @@
+services:
+  pcb-discord-bot:
+    build:
+      context: .
+    image: pcb-discord-bot:latest
+    container_name: pcb-discord-bot
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      SQLITE_PATH: /data/pcb-discord-bot.sqlite
+      HOST: 0.0.0.0
+    volumes:
+      - discord-bot-data:/data
+    networks:
+      - web
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:' + (process.env.PORT || 3000) + '/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    stop_grace_period: 30s
+
+networks:
+  web:
+    external: true
+    name: ${WEB_NETWORK:?Set WEB_NETWORK to the existing Laravel Docker network}
+
+volumes:
+  discord-bot-data:
