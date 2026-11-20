@@ -91,4 +91,33 @@ describe('RoleReconciler', () => {
       'lacks permission',
     );
   });
+
+  it('retries rate limits and server errors but not permanent Discord errors', async () => {
+    const rateLimited = setup();
+    rateLimited.discord.getMember.mockRejectedValue({ status: 429 });
+    await expect(
+      rateLimited.reconciler.reconcile(userId),
+    ).rejects.toMatchObject({ retryable: true });
+
+    const serverError = setup();
+    serverError.discord.getMember.mockRejectedValue({ status: 503 });
+    await expect(
+      serverError.reconciler.reconcile(userId),
+    ).rejects.toMatchObject({ retryable: true });
+
+    const missingMember = setup();
+    missingMember.discord.getMember.mockRejectedValue({
+      code: 10007,
+      status: 404,
+    });
+    await expect(
+      missingMember.reconciler.reconcile(userId),
+    ).rejects.toMatchObject({ retryable: false });
+
+    const forbidden = setup();
+    forbidden.discord.addRoles.mockRejectedValue({ code: 50013, status: 403 });
+    await expect(forbidden.reconciler.reconcile(userId)).rejects.toMatchObject({
+      retryable: false,
+    });
+  });
 });

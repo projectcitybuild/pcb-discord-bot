@@ -50,12 +50,12 @@ export class SqliteQueue {
     now = Date.now(),
   ): EnqueueResult {
     const transaction = this.database.transaction((): EnqueueResult => {
-      if (this.hasSyncId(syncId)) return 'duplicate';
       this.database
         .prepare(
-          "DELETE FROM sync_jobs WHERE status = 'completed' AND updated_at < ?",
+          "DELETE FROM sync_jobs WHERE status IN ('completed', 'failed') AND updated_at < ?",
         )
         .run(now - 30 * 24 * 60 * 60 * 1000);
+      if (this.hasSyncId(syncId)) return 'duplicate';
       const count = this.database
         .prepare('SELECT COUNT(*) AS count FROM sync_jobs')
         .get() as { count: number };
