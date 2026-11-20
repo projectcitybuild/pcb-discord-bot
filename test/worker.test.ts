@@ -59,13 +59,13 @@ function createWorker(
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
-  } as unknown as Logger;
+  };
   return {
     worker: new QueueWorker(
       queue,
       reconciler as RoleReconciler,
       config,
-      logger,
+      logger as unknown as Logger,
     ),
     logger,
   };
@@ -294,5 +294,107 @@ describe('QueueWorker', () => {
     expect(queue.complete).toHaveBeenCalledWith(syncIds[0]);
     expect(reconciler.reconcile).toHaveBeenCalledTimes(1);
     expect(worker.processing).toBe(false);
+  });
+
+  it('records a retry when completing a job throws', async () => {
+    vi.useFakeTimers();
+    const { queue, typedQueue } = createQueue([job(0)]);
+    const reconciler = { reconcile: vi.fn(async () => emptyResult) };
+    const { worker, logger } = createWorker(typedQueue, reconciler);
+    const failed = deferred<void>();
+    queue.complete.mockImplementation(() => {
+      throw new Error('SQLite unavailable');
+    });
+    queue.fail.mockImplementation(() => {
+      failed.resolve();
+      return 'pending';
+    });
+
+    worker.start();
+    await failed.promise;
+    await stopWorker(worker);
+
+    expect(queue.fail).toHaveBeenCalledWith(
+      expect.objectContaining({ syncId: syncIds[0], retryable: true }),
+    );
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(worker.processing).toBe(false);
+  });
+
+  it('contains fail errors and releases the user for subsequent work', async () => {
+    vi.useFakeTimers();
+    const sameUserId = userIds[0]!;
+    const { queue, typedQueue } = createQueue([
+      job(0, sameUserId),
+      job(1, sameUserId),
+    ]);
+    const reconciler = {
+      reconcile: vi
+        .fn()
+        .mockRejectedValueOnce(new Error('reconciliation failed'))
+        .mockResolvedValueOnce(emptyResult),
+    };
+    const { worker, logger } = createWorker(typedQueue, reconciler);
+    const unexpectedFailure = deferred<void>();
+    const completed = deferred<void>();
+    logger.error.mockImplementation(() => unexpectedFailure.resolve());
+    queue.fail.mockImplementation(() => {
+      throw new Error('SQLite unavailable');
+    });
+    queue.complete.mockImplementation(() => completed.resolve());
+
+    worker.start();
+    await unexpectedFailure.promise;
+    await vi.advanceTimersByTimeAsync(pollIntervalMs);
+    await completed.promise;
+    await stopWorker(worker);
+
+    expect(reconciler.reconcile).toHaveBeenCalledTimes(2);
+    expect(queue.complete).toHaveBeenCalledWith(syncIds[1]);
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ syncId: syncIds[0] }),
+      'Queue worker job failed unexpectedly',
+    );
+    expect(worker.processing).toBe(false);
+  });
+
+  it('continues polling after a queue claim error', async () => {
+    vi.useFakeTimers();
+    const { queue, typedQueue } = createQueue([job(0)]);
+    const reconciler = { reconcile: vi.fn(async () => emptyResult) };
+    const { worker, logger } = createWorker(typedQueue, reconciler);
+    const claimErrorLogged = deferred<void>();
+    const completed = deferred<void>();
+    logger.error.mockImplementation(() => claimErrorLogged.resolve());
+    queue.claimNext.mockImplementationOnce(() => {
+      throw new Error('SQLite unavailable');
+    });
+    queue.complete.mockImplementation(() => completed.resolve());
+
+    worker.start();
+    await claimErrorLogged.promise;
+    await vi.advanceTimersByTimeAsync(pollIntervalMs);
+    await completed.promise;
+    await stopWorker(worker);
+
+    expect(queue.claimNext).toHaveBeenCalledTimes(2);
+    expect(reconciler.reconcile).toHaveBeenCalledTimes(1);
+    expect(logger.error).toHaveBeenCalledWith(
+      { error: 'Unexpected synchronization error' },
+      'Queue job claim failed',
+    );
+  });
+
+  it('interrupts the poll wait immediately during shutdown', async () => {
+    vi.useFakeTimers();
+    const { typedQueue } = createQueue([]);
+    const { worker } = createWorker(typedQueue, { reconcile: vi.fn() });
+
+    worker.start();
+    expect(vi.getTimerCount()).toBe(1);
+
+    await worker.stop();
+
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

@@ -7,6 +7,7 @@ import type { RoleReconciler } from '../sync/reconciler.js';
 export class QueueWorker {
   private stopping = false;
   private loopPromise: Promise<void> | undefined;
+  private wakePoll: (() => void) | undefined;
   private readonly activeUsers = new Set<string>();
   private readonly activeTasks = new Set<Promise<void>>();
 
@@ -29,6 +30,7 @@ export class QueueWorker {
 
   async stop(): Promise<void> {
     this.stopping = true;
+    this.wakePoll?.();
     await this.loopPromise;
     await Promise.all(this.activeTasks);
   }
@@ -40,21 +42,52 @@ export class QueueWorker {
         !this.stopping &&
         this.activeTasks.size < this.config.QUEUE_CONCURRENCY
       ) {
-        const job = this.queue.claimNext(this.activeUsers);
+        let job;
+        try {
+          job = this.queue.claimNext(this.activeUsers);
+        } catch (error) {
+          this.logger.error(
+            { error: sanitizedError(error) },
+            'Queue job claim failed',
+          );
+          break;
+        }
         if (!job) break;
         claimed = true;
         this.activeUsers.add(job.discordUserId);
-        const task = this.process(job).finally(() => {
-          this.activeUsers.delete(job.discordUserId);
-          this.activeTasks.delete(task);
-        });
+        const task = this.process(job)
+          .catch((error: unknown) => {
+            this.logger.error(
+              {
+                syncId: job.syncId,
+                discordUserId: job.discordUserId,
+                error: sanitizedError(error),
+              },
+              'Queue worker job failed unexpectedly',
+            );
+          })
+          .finally(() => {
+            this.activeUsers.delete(job.discordUserId);
+            this.activeTasks.delete(task);
+          });
         this.activeTasks.add(task);
       }
-      if (!claimed)
-        await new Promise((resolve) =>
-          setTimeout(resolve, this.config.QUEUE_POLL_INTERVAL_MS),
-        );
+      if (!claimed) await this.waitForPoll();
     }
+  }
+
+  private waitForPoll(): Promise<void> {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.wakePoll = undefined;
+        resolve();
+      }, this.config.QUEUE_POLL_INTERVAL_MS);
+      this.wakePoll = () => {
+        clearTimeout(timer);
+        this.wakePoll = undefined;
+        resolve();
+      };
+    });
   }
 
   private async process(job: {
