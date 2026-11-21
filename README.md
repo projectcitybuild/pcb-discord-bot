@@ -6,33 +6,21 @@ This service syncs website roles to one Discord guild. The PCB API is the source
 
 - Install mise and Docker Compose v2. Run `mise install` to install the pinned Node.js and bundled npm versions.
 - Create a Discord bot. Enable the **Server Members Intent**. Grant `Manage Roles` in the target guild. Place the bot's highest role above all managed roles.
-- Create a Laravel Passport client for `client_credentials` and grant the `discord.roles.sync` scope.
-- Set the bot's guild ID to the same ID as Laravel's. Set `WEB_API_BASE_URL` to the host reachable from the bot container, without a path. If that hostname differs from Laravel's API route domain, set `WEB_API_HOST_HEADER` to the route domain (for example, `api.localhost`).
-- Set Laravel's `DISCORD_BOT_CALLBACK_URL` and `DISCORD_CALLBACK_SECRET`. The secret must match `WEBHOOK_SECRET`.
 - Copy `.env.example` to `.env` and set the required values.
 
-Laravel sends `POST /webhooks/discord/role-sync` with `discord_user_id` and `sync_id`. It signs the exact JSON body with HMAC-SHA256 over `${timestamp}.${body}`. The bot checks `X-Discord-Timestamp`, `X-Discord-Signature`, and `Idempotency-Key`.
+### Configure .env variables
 
-The bot reads `GET /v3/discord/users/{discordUserId}/roles` using the `discord.roles.sync` scope. It gets an OAuth token from `/oauth/token`. Laravel must use HTTPS for callbacks outside local/testing. In production, route a private HTTPS hostname or proxy to the bot over the Docker network.
+| Variable | Source/purpose |
+| --- | --- |
+| `WEB_NETWORK` | Network of the API web server container. This bot should be run on the same network so that it can communicate |
+| `WEBHOOK_SECRET` | Secret set in the web server's .env. This is used to prove that an incoming webhook HTTP request is from the web server. |
+| `WEB_API_BASE_URL` | API web server container's host. Must be reachable from within the bot container |
+| `WEB_API_HOST_HEADER` | If that hostname differs from Laravel's API route domain, set to the route domain (for example, `api.localhost`). |
+| `WEB_API_CLIENT_ID` | Passport client ID |
+| `WEB_API_CLIENT_SECRET` | Passport client secret |
+| `WEB_API_SCOPE` | OAuth scope |
 
 ## Run locally
-
-```sh
-npm ci
-cp .env.example .env
-npm run dev
-```
-
-Run checks:
-
-```sh
-npm test
-npm run typecheck
-npm run lint
-npm run build
-```
-
-## Run with Docker
 
 Set `WEB_NETWORK` to the existing private Docker network shared with Laravel:
 
