@@ -10,6 +10,7 @@ const environmentSchema = z.object({
   WEBHOOK_SECRET: z.string().min(1),
   WEBHOOK_MAX_AGE_SECONDS: z.coerce.number().int().positive().default(300),
   WEB_API_BASE_URL: z.string().url(),
+  WEB_DISCORD_CONNECT_URL: z.string().url(),
   WEB_API_HOST_HEADER: z.string().min(1).optional(),
   WEB_API_CLIENT_ID: z.string().min(1),
   WEB_API_CLIENT_SECRET: z.string().min(1),
@@ -51,6 +52,18 @@ export function loadConfig(
   if (baseUrl.username || baseUrl.password || baseUrl.search || baseUrl.hash) {
     throw new Error(
       'Invalid environment configuration: WEB_API_BASE_URL must not contain credentials, query, or fragment',
+    );
+  }
+
+  const connectUrl = new URL(parsed.data.WEB_DISCORD_CONNECT_URL);
+  if (
+    connectUrl.username ||
+    connectUrl.password ||
+    connectUrl.search ||
+    connectUrl.hash
+  ) {
+    throw new Error(
+      'Invalid environment configuration: WEB_DISCORD_CONNECT_URL must not contain credentials, query, or fragment',
     );
   }
 

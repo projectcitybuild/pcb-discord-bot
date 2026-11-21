@@ -12,11 +12,12 @@ export function verifyWebhook(input: {
   compare?: typeof timingSafeEqual;
 }): WebhookAuthResult {
   const { body, timestamp, signature, secret, maxAgeSeconds } = input;
-  if (!timestamp || !/^\d{1,12}$/.test(timestamp))
+  if (!timestamp || !/^\d{1,12}$/.test(timestamp)) {
     return { ok: false, reason: 'invalid_timestamp' };
-  if (!signature || !/^sha256=[a-f0-9]{64}$/.test(signature))
+  }
+  if (!signature || !/^sha256=[a-f0-9]{64}$/.test(signature)) {
     return { ok: false, reason: 'invalid_signature' };
-
+  }
   const timestampSeconds = Number(timestamp);
   const nowSeconds = input.nowSeconds ?? Math.floor(Date.now() / 1000);
   if (
@@ -31,6 +32,7 @@ export function verifyWebhook(input: {
     .update('.')
     .update(body)
     .digest();
+
   const supplied = Buffer.from(signature.slice('sha256='.length), 'hex');
   if (
     supplied.length !== expected.length ||

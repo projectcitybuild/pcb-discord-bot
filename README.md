@@ -16,6 +16,7 @@ This service syncs website roles to one Discord guild. The PCB API is the source
 | `WEBHOOK_SECRET` | Secret set in the web server's .env. This is used to prove that an incoming webhook HTTP request is from the web server. |
 | `WEB_API_BASE_URL` | API web server container's host. Must be reachable from within the bot container |
 | `WEB_API_HOST_HEADER` | If that hostname differs from Laravel's API route domain, set to the route domain (for example, `api.localhost`). |
+| `WEB_DISCORD_CONNECT_URL` | Public website URL for the Discord account connect route (`/account/settings/discord/connect`). |
 | `WEB_API_CLIENT_ID` | Passport client ID |
 | `WEB_API_CLIENT_SECRET` | Passport client secret |
 | `WEB_API_SCOPE` | OAuth scope |

@@ -11,6 +11,8 @@ const config = loadConfig({
   DISCORD_GUILD_ID: '12345678901234567',
   WEBHOOK_SECRET: 'webhook-secret',
   WEB_API_BASE_URL: 'https://api.example.test',
+  WEB_DISCORD_CONNECT_URL:
+    'https://projectcity.build/account/settings/discord/connect',
   WEB_API_CLIENT_ID: 'client-id',
   WEB_API_CLIENT_SECRET: 'client-secret',
 });

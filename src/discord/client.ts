@@ -1,4 +1,8 @@
-import { Client, GatewayIntentBits } from 'discord.js';
+import {
+  Client,
+  GatewayIntentBits,
+  type ChatInputCommandInteraction,
+} from 'discord.js';
 import type { Logger } from 'pino';
 import type { AppConfig } from '../config.js';
 import type {
@@ -29,6 +33,18 @@ export class DiscordGateway implements DiscordRoleGateway {
     this.client.on('shardReconnecting', (shardId) =>
       this.logger.info({ shardId }, 'Discord gateway reconnecting'),
     );
+    this.client.on('interactionCreate', (interaction) => {
+      if (
+        !interaction.isChatInputCommand() ||
+        interaction.commandName !== 'connect'
+      ) {
+        return;
+      }
+
+      void this.handleConnectCommand(interaction).catch((error: unknown) =>
+        this.logger.error({ err: error }, 'Discord connect command failed'),
+      );
+    });
     this.client.once('ready', () => {
       this.logger.info(
         {
@@ -37,12 +53,47 @@ export class DiscordGateway implements DiscordRoleGateway {
         },
         'Discord client ready',
       );
+      void this.registerCommands().catch((error: unknown) =>
+        this.logger.error({ err: error }, 'Could not register Discord commands'),
+      );
     });
   }
 
   async start(): Promise<void> {
     this.logger.info('Connecting Discord client');
     await this.client.login(this.config.DISCORD_BOT_TOKEN);
+  }
+
+  private async registerCommands(): Promise<void> {
+    await this.client.application?.commands.create(
+      {
+        name: 'connect',
+        description: 'Link your Discord account to your PCB account',
+      },
+      this.config.DISCORD_GUILD_ID,
+    );
+  }
+
+  private async handleConnectCommand(
+    interaction: ChatInputCommandInteraction,
+  ): Promise<void> {
+    const connectUrl = this.config.WEB_DISCORD_CONNECT_URL;
+    await interaction.deferReply({ ephemeral: true });
+
+    try {
+      await interaction.user.send(
+        `Connect your Discord account to your PCB account: ${connectUrl}`,
+      );
+      await interaction.editReply('I sent you a private message with the link.');
+    } catch (error) {
+      this.logger.warn(
+        { discordUserId: interaction.user.id, err: error },
+        'Could not DM Discord connect link; returning it privately',
+      );
+      await interaction.editReply(
+        `I could not send you a DM. Use this private link instead: ${connectUrl}`,
+      );
+    }
   }
 
   async getMember(discordUserId: string): Promise<DiscordMemberSnapshot> {

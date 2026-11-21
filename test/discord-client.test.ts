@@ -17,6 +17,8 @@ function setup(member: object = { roles: { add: vi.fn(), remove: vi.fn() } }) {
   const config = {
     DISCORD_GUILD_ID: guildId,
     DISCORD_BOT_TOKEN: 'test-token',
+    WEB_DISCORD_CONNECT_URL:
+      'https://projectcity.build/account/settings/discord/connect',
   } as AppConfig;
   const gateway = new DiscordGateway(config, logger);
   const membersFetch = vi.fn(async () => member);
@@ -31,6 +33,48 @@ function setup(member: object = { roles: { add: vi.fn(), remove: vi.fn() } }) {
 }
 
 describe('DiscordGateway', () => {
+  it('DMs the connect URL when a user invokes the connect command', async () => {
+    const send = vi.fn();
+    const { gateway } = setup();
+    const interaction = {
+      isChatInputCommand: () => true,
+      commandName: 'connect',
+      user: { id: userId, send },
+      deferReply: vi.fn(),
+      editReply: vi.fn(),
+    };
+
+    gateway.client.emit('interactionCreate', interaction as never);
+    await vi.waitFor(() => expect(send).toHaveBeenCalledOnce());
+
+    expect(send).toHaveBeenCalledWith(
+      'Connect your Discord account to your PCB account: https://projectcity.build/account/settings/discord/connect',
+    );
+    expect(interaction.deferReply).toHaveBeenCalledWith({ ephemeral: true });
+    expect(interaction.editReply).toHaveBeenCalledWith(
+      'I sent you a private message with the link.',
+    );
+  });
+
+  it('returns the connect URL privately when DMs are unavailable', async () => {
+    const error = new Error('Cannot send messages to this user');
+    const { gateway } = setup();
+    const interaction = {
+      isChatInputCommand: () => true,
+      commandName: 'connect',
+      user: { id: userId, send: vi.fn().mockRejectedValue(error) },
+      deferReply: vi.fn(),
+      editReply: vi.fn(),
+    };
+
+    gateway.client.emit('interactionCreate', interaction as never);
+    await vi.waitFor(() => expect(interaction.editReply).toHaveBeenCalled());
+
+    expect(interaction.editReply).toHaveBeenCalledWith(
+      'I could not send you a DM. Use this private link instead: https://projectcity.build/account/settings/discord/connect',
+    );
+  });
+
   it('passes role additions and removals to the fetched member', async () => {
     const member = {
       roles: { add: vi.fn(), remove: vi.fn() },
