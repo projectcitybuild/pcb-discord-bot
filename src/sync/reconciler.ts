@@ -39,9 +39,10 @@ export class RoleReconciler {
         'Website API returned a different Discord user',
         false,
       );
+    if (!state.linked) return { added: [], removed: [] };
 
     const managed = new Set(state.managed_role_ids);
-    const desired = new Set(state.linked ? state.desired_role_ids : []);
+    const desired = new Set(state.desired_role_ids);
     for (const roleId of desired) {
       if (!managed.has(roleId))
         throw new SyncFailure(

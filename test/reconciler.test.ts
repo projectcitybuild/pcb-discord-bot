@@ -52,7 +52,7 @@ describe('RoleReconciler', () => {
     });
   });
 
-  it('does nothing when roles already match and removes managed roles for unlinked users', async () => {
+  it('does nothing when roles already match or a user is unlinked', async () => {
     const matching = setup({}, [managedA, unmanaged]);
     expect(await matching.reconciler.reconcile(userId)).toEqual({
       added: [],
@@ -69,8 +69,12 @@ describe('RoleReconciler', () => {
     ]);
     expect(await unlinked.reconciler.reconcile(userId)).toEqual({
       added: [],
-      removed: [managedA, managedB],
+      removed: [],
     });
+    expect(unlinked.discord.getMember).not.toHaveBeenCalled();
+    expect(unlinked.discord.addRoles).not.toHaveBeenCalled();
+    expect(unlinked.discord.removeRoles).not.toHaveBeenCalled();
+    expect(unlinked.discord.notifyRoleChange).not.toHaveBeenCalled();
   });
 
   it('removes all managed roles when a linked user has an empty desired set', async () => {

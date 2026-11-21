@@ -6,6 +6,7 @@ import type {
   DiscordRoleGateway,
   ReconcileResult,
 } from '../sync/reconciler.js';
+import { formatAccountEventMessage, formatRoleChangeMessage } from './messages.js';
 
 export class DiscordGateway implements DiscordRoleGateway {
   readonly client = new Client({
@@ -94,21 +95,32 @@ export class DiscordGateway implements DiscordRoleGateway {
       const guild = await this.client.guilds.fetch(this.config.DISCORD_GUILD_ID);
       const roles = await guild.roles.fetch();
       const user = await this.client.users.fetch(discordUserId);
-      const changes = [
-        ...change.added.map(
-          (roleId) => `- **${roles.get(roleId)?.name ?? roleId}** has been added.`,
-        ),
-        ...change.removed.map(
-          (roleId) => `- **${roles.get(roleId)?.name ?? roleId}** has been removed.`,
-        ),
-      ];
-      await user.send(
-        `**Role Update**\n\nThe following changes have been made to your Discord roles:\n\n${changes.join('\n')}`,
+      const added = change.added.map(
+        (roleId) => roles.get(roleId)?.name ?? roleId,
       );
+      const removed = change.removed.map(
+        (roleId) => roles.get(roleId)?.name ?? roleId,
+      );
+      await user.send(formatRoleChangeMessage(added, removed));
     } catch (error) {
       this.logger.warn(
         { discordUserId, err: error },
         'Could not send Discord role change notification',
+      );
+    }
+  }
+
+  async notifyAccountEvent(
+    discordUserId: string,
+    event: 'linked' | 'disconnected',
+  ): Promise<void> {
+    try {
+      const user = await this.client.users.fetch(discordUserId);
+      await user.send(formatAccountEventMessage(event));
+    } catch (error) {
+      this.logger.warn(
+        { discordUserId, event, err: error },
+        'Could not send Discord account notification',
       );
     }
   }

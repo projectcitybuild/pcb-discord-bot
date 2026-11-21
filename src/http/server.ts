@@ -11,6 +11,10 @@ export function createHttpServer(input: {
   queue: SqliteQueue;
   worker: QueueWorker;
   discordReady: () => boolean;
+  notifyAccountEvent: (
+    discordUserId: string,
+    event: 'linked' | 'disconnected',
+  ) => Promise<void>;
   logger: Logger;
 }) {
   const app = Fastify({ loggerInstance: input.logger });
@@ -85,6 +89,11 @@ export function createHttpServer(input: {
       },
       'Discord role sync accepted',
     );
+    if (parsed.data.account_event)
+      await input.notifyAccountEvent(
+        parsed.data.discord_user_id,
+        parsed.data.account_event,
+      );
     return reply.code(202).send({ accepted: true });
   });
 

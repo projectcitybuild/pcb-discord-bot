@@ -100,6 +100,25 @@ describe('DiscordGateway', () => {
     );
   });
 
+  it.each([
+    [
+      'linked',
+      '**Discord Account Linked**\n\nYour Discord account is now linked to your Project City account. Your server roles will be synchronized shortly.',
+    ],
+    [
+      'disconnected',
+      '**Discord Account Disconnected**\n\nYour Discord account has been disconnected from your Project City account.',
+    ],
+  ] as const)('sends an account %s notification', async (event, message) => {
+    const send = vi.fn();
+    const { gateway } = setup();
+    vi.spyOn(gateway.client.users, 'fetch').mockResolvedValue({ send } as never);
+
+    await gateway.notifyAccountEvent(userId, event);
+
+    expect(send).toHaveBeenCalledWith(message);
+  });
+
   it('propagates member lookup errors for reconciliation classification', async () => {
     const missingMember = Object.assign(new Error('Unknown Member'), {
       code: 10007,

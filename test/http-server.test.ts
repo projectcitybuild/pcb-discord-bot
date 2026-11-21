@@ -20,11 +20,13 @@ const queue = {
   stats: vi.fn().mockReturnValue({ pending: 0, processing: 0, failed: 0 }),
 } as unknown as SqliteQueue;
 const worker = { processing: false } as unknown as QueueWorker;
+const notifyAccountEvent = vi.fn(async () => undefined);
 const app = createHttpServer({
   config,
   queue,
   worker,
   discordReady: () => true,
+  notifyAccountEvent,
   logger: pino({ level: 'silent' }),
 });
 
@@ -73,5 +75,63 @@ describe('role-sync webhook endpoint', () => {
     });
     expect(response.statusCode).toBe(401);
     expect(queue.enqueue).not.toHaveBeenCalled();
+  });
+
+  it.each(['linked', 'disconnected'] as const)(
+    'notifies the Discord user when their account is %s',
+    async (accountEvent) => {
+      const body = JSON.stringify({
+        discord_user_id: '23456789012345678',
+        sync_id: 'c2cb173a-6976-4dcb-a9b4-d8932cc77e08',
+        account_event: accountEvent,
+      });
+      const timestamp = Math.floor(Date.now() / 1000).toString();
+      const signature = createHmac('sha256', config.WEBHOOK_SECRET)
+        .update(`${timestamp}.${body}`)
+        .digest('hex');
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/webhooks/discord/role-sync',
+        headers: {
+          'content-type': 'application/json',
+          'x-discord-timestamp': timestamp,
+          'x-discord-signature': `sha256=${signature}`,
+          'idempotency-key': 'c2cb173a-6976-4dcb-a9b4-d8932cc77e08',
+        },
+        payload: body,
+      });
+
+      expect(response.statusCode).toBe(202);
+      expect(notifyAccountEvent).toHaveBeenCalledWith(
+        '23456789012345678',
+        accountEvent,
+      );
+    },
+  );
+
+  it('does not repeat an account notification for a duplicate callback', async () => {
+    vi.mocked(queue.enqueue).mockReturnValueOnce('duplicate');
+    const body =
+      '{"discord_user_id":"23456789012345678","sync_id":"c2cb173a-6976-4dcb-a9b4-d8932cc77e08","account_event":"linked"}';
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const signature = createHmac('sha256', config.WEBHOOK_SECRET)
+      .update(`${timestamp}.${body}`)
+      .digest('hex');
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/webhooks/discord/role-sync',
+      headers: {
+        'content-type': 'application/json',
+        'x-discord-timestamp': timestamp,
+        'x-discord-signature': `sha256=${signature}`,
+        'idempotency-key': 'c2cb173a-6976-4dcb-a9b4-d8932cc77e08',
+      },
+      payload: body,
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(notifyAccountEvent).not.toHaveBeenCalled();
   });
 });

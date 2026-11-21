@@ -29,6 +29,8 @@ async function main(): Promise<void> {
     queue,
     worker,
     discordReady: () => discord.isReady(),
+    notifyAccountEvent: (discordUserId, event) =>
+      discord.notifyAccountEvent(discordUserId, event),
     logger,
   });
 
