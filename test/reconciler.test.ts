@@ -28,6 +28,7 @@ function setup(
     })),
     addRoles: vi.fn(async () => undefined),
     removeRoles: vi.fn(async () => undefined),
+    notifyRoleChange: vi.fn(async () => undefined),
   };
   return {
     reconciler: new RoleReconciler(guildId, discord, async () => roleState),
@@ -45,6 +46,10 @@ describe('RoleReconciler', () => {
     expect(discord.addRoles).toHaveBeenCalledWith(userId, [managedA]);
     expect(discord.removeRoles).toHaveBeenCalledWith(userId, [managedB]);
     expect(discord.removeRoles).not.toHaveBeenCalledWith(userId, [unmanaged]);
+    expect(discord.notifyRoleChange).toHaveBeenCalledWith(userId, {
+      added: [managedA],
+      removed: [managedB],
+    });
   });
 
   it('does nothing when roles already match and removes managed roles for unlinked users', async () => {
@@ -55,6 +60,7 @@ describe('RoleReconciler', () => {
     });
     expect(matching.discord.addRoles).not.toHaveBeenCalled();
     expect(matching.discord.removeRoles).not.toHaveBeenCalled();
+    expect(matching.discord.notifyRoleChange).not.toHaveBeenCalled();
 
     const unlinked = setup({ linked: false, desired_role_ids: [] }, [
       managedA,

@@ -27,7 +27,7 @@ function setup(member: object = { roles: { add: vi.fn(), remove: vi.fn() } }) {
     roles: { fetch: rolesFetch },
   };
   vi.spyOn(gateway.client.guilds, 'fetch').mockResolvedValue(guild as never);
-  return { gateway, guild, membersFetch, rolesFetch, member };
+  return { gateway, guild, logger, membersFetch, rolesFetch, member };
 }
 
 describe('DiscordGateway', () => {
@@ -61,6 +61,43 @@ describe('DiscordGateway', () => {
 
     expect(snapshot.roleIds).toEqual(new Set(['34567890123456789']));
     expect(snapshot.validGuildRoleIds).toEqual(new Set(roleIds));
+  });
+
+  it('sends a private role change notification to the Discord user', async () => {
+    const send = vi.fn();
+    const { gateway, rolesFetch } = setup();
+    rolesFetch.mockResolvedValue(
+      new Map([
+        [roleIds[0]!, { name: 'Builder' }],
+        [roleIds[1]!, { name: 'Event Host' }],
+      ]) as never,
+    );
+    vi.spyOn(gateway.client.users, 'fetch').mockResolvedValue({
+      send,
+    } as never);
+
+    await gateway.notifyRoleChange(userId, {
+      added: [roleIds[0]!],
+      removed: [roleIds[1]!],
+    });
+
+    expect(send).toHaveBeenCalledWith(
+      '**Role Update**\n\nThe following changes have been made to your Discord roles:\n\n- **Builder** has been added.\n- **Event Host** has been removed.',
+    );
+  });
+
+  it('logs and ignores private message delivery failures', async () => {
+    const error = new Error('Cannot send messages to this user');
+    const { gateway, logger } = setup();
+    vi.spyOn(gateway.client.users, 'fetch').mockRejectedValue(error);
+
+    await expect(
+      gateway.notifyRoleChange(userId, { added: roleIds, removed: [] }),
+    ).resolves.toBeUndefined();
+    expect(logger.warn).toHaveBeenCalledWith(
+      { discordUserId: userId, err: error },
+      'Could not send Discord role change notification',
+    );
   });
 
   it('propagates member lookup errors for reconciliation classification', async () => {

@@ -10,6 +10,10 @@ export interface DiscordRoleGateway {
   getMember(discordUserId: string): Promise<DiscordMemberSnapshot>;
   addRoles(discordUserId: string, roleIds: string[]): Promise<void>;
   removeRoles(discordUserId: string, roleIds: string[]): Promise<void>;
+  notifyRoleChange(
+    discordUserId: string,
+    change: ReconcileResult,
+  ): Promise<void>;
 }
 
 export type ReconcileResult = { added: string[]; removed: string[] };
@@ -76,6 +80,11 @@ export class RoleReconciler {
     } catch (error) {
       throw classifyDiscordError(error);
     }
+    if (additions.length > 0 || removals.length > 0)
+      await this.discord.notifyRoleChange(discordUserId, {
+        added: additions,
+        removed: removals,
+      });
     return { added: additions, removed: removals };
   }
 }

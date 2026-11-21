@@ -4,6 +4,7 @@ import type { AppConfig } from '../config.js';
 import type {
   DiscordMemberSnapshot,
   DiscordRoleGateway,
+  ReconcileResult,
 } from '../sync/reconciler.js';
 
 export class DiscordGateway implements DiscordRoleGateway {
@@ -83,6 +84,33 @@ export class DiscordGateway implements DiscordRoleGateway {
       roleIds,
       'PCB website role synchronization',
     );
+  }
+
+  async notifyRoleChange(
+    discordUserId: string,
+    change: ReconcileResult,
+  ): Promise<void> {
+    try {
+      const guild = await this.client.guilds.fetch(this.config.DISCORD_GUILD_ID);
+      const roles = await guild.roles.fetch();
+      const user = await this.client.users.fetch(discordUserId);
+      const changes = [
+        ...change.added.map(
+          (roleId) => `- **${roles.get(roleId)?.name ?? roleId}** has been added.`,
+        ),
+        ...change.removed.map(
+          (roleId) => `- **${roles.get(roleId)?.name ?? roleId}** has been removed.`,
+        ),
+      ];
+      await user.send(
+        `**Role Update**\n\nThe following changes have been made to your Discord roles:\n\n${changes.join('\n')}`,
+      );
+    } catch (error) {
+      this.logger.warn(
+        { discordUserId, err: error },
+        'Could not send Discord role change notification',
+      );
+    }
   }
 
   isReady(): boolean {
