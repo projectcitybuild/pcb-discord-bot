@@ -1,3 +1,4 @@
+import { createServer } from 'node:http';
 import { describe, expect, it, vi } from 'vitest';
 import { loadConfig } from '../src/config.js';
 import { WebsiteClient } from '../src/api/website-client.js';
@@ -48,15 +49,83 @@ describe('WebsiteClient', () => {
     expect(fetcher.mock.calls[0]?.[0].toString()).toBe(
       'https://api.example.test/oauth/token',
     );
-    expect(fetcher.mock.calls[0]?.[1].headers).toMatchObject({
-      'Content-Type': 'application/x-www-form-urlencoded',
-    });
+    expect(
+      new Headers(fetcher.mock.calls[0]?.[1].headers).get('Content-Type'),
+    ).toBe('application/x-www-form-urlencoded');
     expect(fetcher.mock.calls[0]?.[1].body).toContain(
       'grant_type=client_credentials',
     );
     expect(fetcher.mock.calls[1]?.[0].toString()).toBe(
       `https://api.example.test/v3/discord/users/${userId}/roles`,
     );
+  });
+
+  it('uses the configured virtual host while connecting to the API base URL', async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        response({ access_token: 'access-token', expires_in: 3600 }),
+      )
+      .mockResolvedValueOnce(response(roleState));
+    const client = new WebsiteClient(
+      loadConfig({
+        ...environment,
+        WEB_API_BASE_URL: 'http://nginx',
+        WEB_API_HOST_HEADER: 'api.localhost',
+      }),
+      fetcher,
+      async () => undefined,
+    );
+
+    await client.getDesiredRoles(userId);
+
+    expect(fetcher.mock.calls[0]?.[0].host).toBe('nginx');
+    expect(
+      new Headers(fetcher.mock.calls[0]?.[1].headers).get('Host'),
+    ).toBe('api.localhost');
+    const apiHeaders = new Headers(fetcher.mock.calls[1]?.[1].headers);
+    expect(apiHeaders.get('Authorization')).toBe('Bearer access-token');
+    expect(apiHeaders.get('Host')).toBe('api.localhost');
+  });
+
+  it('sends the configured virtual host on the wire', async () => {
+    const receivedHosts: string[] = [];
+    const server = createServer((request, result) => {
+      receivedHosts.push(request.headers.host ?? '');
+      result.setHeader('Content-Type', 'application/json');
+      result.end(
+        JSON.stringify(
+          request.url === '/oauth/token'
+            ? { access_token: 'access-token', expires_in: 3600 }
+            : roleState,
+        ),
+      );
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, '127.0.0.1', resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === 'string')
+      throw new Error('HTTP test server did not start');
+    const client = new WebsiteClient(
+      loadConfig({
+        ...environment,
+        WEB_API_BASE_URL: `http://127.0.0.1:${address.port}`,
+        WEB_API_HOST_HEADER: 'api.localhost',
+      }),
+    );
+
+    try {
+      await expect(client.getDesiredRoles(userId)).resolves.toMatchObject(
+        roleState,
+      );
+      expect(receivedHosts).toEqual(['api.localhost', 'api.localhost']);
+    } finally {
+      await client.close();
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
   });
 
   it('validates API schemas and retries transient failures', async () => {

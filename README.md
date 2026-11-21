@@ -7,7 +7,7 @@ This service syncs website roles to one Discord guild. The PCB API is the source
 - Install mise and Docker Compose v2. Run `mise install` to install the pinned Node.js and bundled npm versions.
 - Create a Discord bot. Enable the **Server Members Intent**. Grant `Manage Roles` in the target guild. Place the bot's highest role above all managed roles.
 - Create a Laravel Passport client for `client_credentials` and grant the `discord.roles.sync` scope.
-- Set the bot's guild ID to the same ID as Laravel's. Set `WEB_API_BASE_URL` to Laravel's API host, without a path.
+- Set the bot's guild ID to the same ID as Laravel's. Set `WEB_API_BASE_URL` to the host reachable from the bot container, without a path. If that hostname differs from Laravel's API route domain, set `WEB_API_HOST_HEADER` to the route domain (for example, `api.localhost`).
 - Set Laravel's `DISCORD_BOT_CALLBACK_URL` and `DISCORD_CALLBACK_SECRET`. The secret must match `WEBHOOK_SECRET`.
 - Copy `.env.example` to `.env` and set the required values.
 

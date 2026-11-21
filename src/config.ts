@@ -10,6 +10,7 @@ const environmentSchema = z.object({
   WEBHOOK_SECRET: z.string().min(1),
   WEBHOOK_MAX_AGE_SECONDS: z.coerce.number().int().positive().default(300),
   WEB_API_BASE_URL: z.string().url(),
+  WEB_API_HOST_HEADER: z.string().min(1).optional(),
   WEB_API_CLIENT_ID: z.string().min(1),
   WEB_API_CLIENT_SECRET: z.string().min(1),
   WEB_API_SCOPE: z.string().min(1).default('discord.roles.sync'),

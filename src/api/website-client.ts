@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { Agent } from 'undici';
+import { Agent, request as undiciRequest } from 'undici';
 import type { AppConfig } from '../config.js';
 import { SyncFailure } from '../errors.js';
 
@@ -25,7 +25,7 @@ export class WebsiteClient {
 
   constructor(
     private readonly config: AppConfig,
-    private readonly fetcher: Fetch = fetch,
+    private readonly fetcher: Fetch = undiciFetch,
     private readonly wait: (milliseconds: number) => Promise<void> = (
       milliseconds,
     ) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
@@ -162,8 +162,12 @@ export class WebsiteClient {
       this.config.WEB_API_REQUEST_TIMEOUT_MS,
     );
     try {
+      const headers = new Headers(init.headers);
+      if (this.config.WEB_API_HOST_HEADER)
+        headers.set('Host', this.config.WEB_API_HOST_HEADER);
       return await this.fetcher(url, {
         ...init,
+        headers,
         signal: controller.signal,
         dispatcher: this.dispatcher,
       } as RequestInit);
@@ -227,4 +231,24 @@ function isTransient(status: number): boolean {
 
 function backoff(attempt: number): number {
   return Math.min(250 * 2 ** attempt, 2000);
+}
+
+async function undiciFetch(url: URL, init: RequestInit): Promise<Response> {
+  const { dispatcher } = init as RequestInit & { dispatcher: Agent };
+  const result = await undiciRequest(url, {
+    method: init.method ?? 'GET',
+    headers: init.headers as HeadersInit,
+    ...(typeof init.body === 'string' ? { body: init.body } : {}),
+    ...(init.signal ? { signal: init.signal as AbortSignal } : {}),
+    dispatcher,
+  });
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(result.headers)) {
+    if (value !== undefined)
+      headers.set(name, Array.isArray(value) ? value.join(', ') : value);
+  }
+  return new Response(await result.body.text(), {
+    status: result.statusCode,
+    headers,
+  });
 }
